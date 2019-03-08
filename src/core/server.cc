@@ -39,8 +39,6 @@
 
 #include "src/core/api.pb.h"
 #include "src/core/constants.h"
-#include "src/core/grpc_server.h"
-#include "src/core/http_server.h"
 #include "src/core/logging.h"
 #include "src/core/metrics.h"
 #include "src/core/model_config.h"
@@ -70,7 +68,6 @@
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow_serving/apis/model.pb.h"
 #include "tensorflow_serving/config/model_server_config.pb.h"
 #include "tensorflow_serving/config/platform_config.pb.h"
@@ -115,10 +112,7 @@ InferenceServer::InferenceServer()
   }
 
   id_ = "inference:0";
-  http_port_ = 8000;
-  grpc_port_ = 8001;
   metrics_port_ = 8002;
-  http_thread_cnt_ = 16;
   strict_model_config_ = true;
   strict_readiness_ = true;
   profiling_enabled_ = false;
@@ -164,10 +158,7 @@ InferenceServer::Init(int argc, char** argv)
   bool allow_http = true;
   bool allow_grpc = true;
   bool allow_metrics = true;
-  int32_t http_port = http_port_;
-  int32_t grpc_port = grpc_port_;
   int32_t metrics_port = metrics_port_;
-  int32_t http_thread_cnt = http_thread_cnt_;
 
   bool log_info = true;
   bool log_warn = true;
@@ -280,11 +271,8 @@ InferenceServer::Init(int argc, char** argv)
   // The server is initialized with default values first, and then the
   // settings will be modified after parsing the arguments.
   id_ = server_id;
-  http_port_ = allow_http ? http_port : -1;
-  grpc_port_ = allow_grpc ? grpc_port : -1;
   metrics_port_ = allow_metrics ? metrics_port : -1;
   model_store_path_ = model_store_path;
-  http_thread_cnt_ = http_thread_cnt;
   strict_model_config_ = strict_model_config;
   strict_readiness_ = strict_readiness;
   profiling_enabled_ = allow_profiling;
@@ -328,9 +316,6 @@ InferenceServer::Init(int argc, char** argv)
     LOG_INFO << "Reporting prometheus metrics on port " << metrics_port_;
     Metrics::Initialize(metrics_port_);
   }
-
-  // Start the HTTP and/or gRPC server accepting connections.
-  Start();
 
   // Disable profiling at server start. Server API can be used to
   // start/stop profiling (unless disabled as indicated by
@@ -482,7 +467,7 @@ InferenceServer::Close()
 }
 
 void
-InferenceServer::Wait()
+InferenceServer::WatchModelRepository()
 {
   tensorflow::Status status;
 
@@ -588,14 +573,6 @@ InferenceServer::Wait()
           repository_poll_secs_ * 1000 * 1000);
     }
   }
-
-  if (grpc_server_) {
-    grpc_server_->Stop();
-  }
-
-  if (http_server_ != nullptr) {
-    http_server_->Stop();
-  }
 }
 
 tensorflow::Status
@@ -604,65 +581,6 @@ InferenceServer::CreateBackendHandle(
     const std::shared_ptr<InferBackendHandle>& handle)
 {
   return handle->Init(model_name, model_version, core_.get());
-}
-
-std::unique_ptr<GRPCServer>
-InferenceServer::StartGrpcServer()
-{
-  std::unique_ptr<GRPCServer> server;
-  tensorflow::Status status = GRPCServer::Create(this, grpc_port_, &server);
-  if (status.ok()) {
-    status = server->Start();
-  }
-
-  if (!status.ok()) {
-    server.reset();
-  }
-  return std::move(server);
-}
-
-std::unique_ptr<HTTPServer>
-InferenceServer::StartHttpServer()
-{
-  std::unique_ptr<HTTPServer> service;
-  tensorflow::Status status =
-      HTTPServer::Create(this, http_port_, http_thread_cnt_, &service);
-  if (status.ok()) {
-    status = service->Start();
-  }
-
-  if (!status.ok()) {
-    service.reset();
-  }
-
-  return std::move(service);
-}
-
-void
-InferenceServer::Start()
-{
-  LOG_INFO << "Starting server '" << id_ << "' listening on";
-
-  // Enable gRPC endpoint if requested...
-  if (grpc_port_ != -1) {
-    LOG_INFO << " localhost:" << std::to_string(grpc_port_)
-             << " for gRPC requests";
-    grpc_server_ = StartGrpcServer();
-    if (grpc_server_ == nullptr) {
-      LOG_ERROR << "Failed to start gRPC server";
-    }
-  }
-
-  // Enable HTTP endpoint if requested...
-  if (http_port_ != -1) {
-    LOG_INFO << " localhost:" << std::to_string(http_port_)
-             << " for HTTP requests";
-
-    http_server_ = StartHttpServer();
-    if (http_server_ == nullptr) {
-      LOG_ERROR << "Failed to start HTTP server";
-    }
-  }
 }
 
 void
