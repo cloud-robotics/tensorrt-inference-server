@@ -1,4 +1,4 @@
-// Copyright (c) 2018, NVIDIA CORPORATION. All rights reserved.
+// Copyright (c) 2018-2019, NVIDIA CORPORATION. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -43,6 +43,7 @@ constexpr char kTensorFlowSavedModelPlatform[] = "tensorflow_savedmodel";
 constexpr char kTensorRTPlanPlatform[] = "tensorrt_plan";
 constexpr char kCaffe2NetDefPlatform[] = "caffe2_netdef";
 constexpr char kCustomPlatform[] = "custom";
+constexpr char kEnsemblePlatform[] = "ensemble";
 
 constexpr char kModelConfigPbTxt[] = "config.pbtxt";
 constexpr char kTensorRTPlanFilename[] = "model.plan";
